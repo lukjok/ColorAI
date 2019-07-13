@@ -7,9 +7,20 @@ class ColorService {
   }
 
   async predictColor(color) {
-    let url = this.config.API_URL + '/' + color;
+    let url = this.config.API_URL;
 
-    return fetch(url)
+    return fetch(url, {
+      method: 'POST',
+      mode: 'cors',
+      cache: 'no-cache',
+      credentials: 'same-origin',
+      headers: {
+          'Content-Type': 'application/json'
+      },
+      redirect: 'follow',
+      referrer: 'no-referrer',
+      body: JSON.stringify(color)
+  })
       .then(response => {
         if (!response.ok) {
           this.handleResponseError(response);

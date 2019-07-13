@@ -21,8 +21,8 @@ namespace API.Controllers
 
         // GET api/values/5
         [EnableCors]
-        [HttpGet("{name}")]
-        public ActionResult<string> Get(string name)
+        [HttpPost()]
+        public ActionResult<string> Get([FromBody] string name)
         {
             return new JsonResult(_service.PredictColor(name));
         }

@@ -20,13 +20,12 @@ namespace API.Services
     {
         private readonly PredictionEnginePool<ColorData, ColorDataPrediction> _model;
         private readonly Vocabulary _word2Vec;
-        private readonly int[] _indicesArr;
         private readonly IConfiguration _configuration;
+        private readonly string[] commonSeperators = new string[] { " ", ".", "-", ",", ";", ":" };
 
         public ColorRecognisionService(PredictionEnginePool<ColorData, ColorDataPrediction> model, IConfiguration configuration)
         {
             _model = model;
-            _indicesArr = Enumerable.Range(0, 300).ToArray();
             _configuration = configuration;
             _word2Vec = new Word2VecBinaryReader().Read(GetAbsolutePath(configuration["MLModel:Word2VecPath"]));
         }
@@ -35,23 +34,34 @@ namespace API.Services
         {
             try
             {
-
                 if (string.IsNullOrWhiteSpace(colorName))
                     throw new Exception("Invalid color name");
 
-                var wordVec = _word2Vec.GetRepresentationOrNullFor(colorName);
-                if (wordVec != null)
-                {
-                    ColorData sampleStatement = new ColorData
-                    {
-                        conv1d_1_input_01 = new VBuffer<float>(1200, 300, wordVec.NumericVector, _indicesArr)
-                    };
+                var splitWords = colorName.Split(commonSeperators, StringSplitOptions.RemoveEmptyEntries);
 
-                    var resultprediction = _model.Predict(sampleStatement);
-                    return resultprediction.FormatHexColor();
+                if(splitWords.Length * 300 > 1200)
+                    throw new Exception("Specified color name have too much keywords");
+
+                List<float> tmpValues = new List<float>();
+                int[] indicesArr = Enumerable.Range(0, 300 * splitWords.Length).ToArray();
+
+                foreach (var word in splitWords)
+                {
+                    var wordVec = _word2Vec.GetRepresentationOrNullFor(word);
+
+                    if (wordVec != null)
+                        tmpValues.AddRange(wordVec.NumericVector);
+                    else if (splitWords.Length == 1)
+                        throw new Exception("Specified color name was not found in the vocabulary");
                 }
-                else
-                    throw new Exception("Specified color name was not found in the vocabulary");
+
+                ColorData sampleStatement = new ColorData
+                {
+                    conv1d_1_input_01 = new VBuffer<float>(1200, 300 * splitWords.Length, tmpValues.ToArray(), indicesArr)
+                };
+
+                var resultprediction = _model.Predict(sampleStatement);
+                return resultprediction.FormatHexColor();
             }
             catch (Exception ex)
             {
