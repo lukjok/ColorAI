@@ -24,7 +24,8 @@ namespace API.Controllers
         [HttpPost()]
         public ActionResult<string> Get([FromBody] string name)
         {
-            return new JsonResult(_service.PredictColor(name));
+            //return new JsonResult(_service.PredictColor(name));
+            return new JsonResult(_service.PredictColorMinified(name));
         }
     }
 }

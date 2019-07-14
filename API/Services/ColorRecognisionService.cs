@@ -1,4 +1,5 @@
-﻿using ColorAIML.Model.DataModels;
+﻿using API.Tools;
+using ColorAIML.Model.DataModels;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.ML;
 using Microsoft.ML.Data;
@@ -14,12 +15,14 @@ namespace API.Services
     public interface IColorRecognisionService
     {
         string PredictColor(string colorName);
+        string PredictColorMinified(string colorName);
     }
 
     public class ColorRecognisionService : IColorRecognisionService
     {
         private readonly PredictionEnginePool<ColorData, ColorDataPrediction> _model;
         private readonly Vocabulary _word2Vec;
+        private readonly CustomWord2VecReader _reader;
         private readonly IConfiguration _configuration;
         private readonly string[] commonSeperators = new string[] { " ", ".", "-", ",", ";", ":" };
 
@@ -27,7 +30,8 @@ namespace API.Services
         {
             _model = model;
             _configuration = configuration;
-            _word2Vec = new Word2VecBinaryReader().Read(GetAbsolutePath(configuration["MLModel:Word2VecPath"]));
+            _reader = new CustomWord2VecReader(GetAbsolutePath(configuration["MLModel:Word2VecPath"]));
+            //_word2Vec = new Word2VecBinaryReader().Read(GetAbsolutePath(configuration["MLModel:Word2VecPath"]));
         }
 
         public string PredictColor(string colorName)
@@ -48,6 +52,45 @@ namespace API.Services
                 foreach (var word in splitWords)
                 {
                     var wordVec = _word2Vec.GetRepresentationOrNullFor(word);
+
+                    if (wordVec != null)
+                        tmpValues.AddRange(wordVec.NumericVector);
+                    else if (splitWords.Length == 1)
+                        throw new Exception("Specified color name was not found in the vocabulary");
+                }
+
+                ColorData sampleStatement = new ColorData
+                {
+                    conv1d_1_input_01 = new VBuffer<float>(1200, 300 * splitWords.Length, tmpValues.ToArray(), indicesArr)
+                };
+
+                var resultprediction = _model.Predict(sampleStatement);
+                return resultprediction.FormatHexColor();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Error while predicting color values. Internal error: {ex.Message}");
+            }
+        }
+
+        public string PredictColorMinified(string colorName)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(colorName))
+                    throw new Exception("Invalid color name");
+
+                var splitWords = colorName.Split(commonSeperators, StringSplitOptions.RemoveEmptyEntries);
+
+                if (splitWords.Length * 300 > 1200)
+                    throw new Exception("Specified color name have too much keywords");
+
+                List<float> tmpValues = new List<float>();
+                int[] indicesArr = Enumerable.Range(0, 300 * splitWords.Length).ToArray();
+
+                foreach (var word in splitWords)
+                {
+                    var wordVec = _reader.FindOrNull(word);
 
                     if (wordVec != null)
                         tmpValues.AddRange(wordVec.NumericVector);
